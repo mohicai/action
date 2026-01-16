@@ -16,7 +16,7 @@ jobs:
         target:
           - mipsel-linux-musl
           - aarch64-linux-musl
-          - armv7l-linux-musleabihf
+          - arm-linux-musleabihf
 
     steps:
     - name: Checkout
