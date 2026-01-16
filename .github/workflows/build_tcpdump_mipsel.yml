@@ -1,149 +1,33 @@
-name: Build multi-arch static tcpdump
+name: Build-WePE-ISO
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
-
-env:
-  LIBPCAP_VERSION: "1.10.4"
-  TCPDUMP_VERSION: "4.99.4"
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - mipsel-linux-musl
-          - aarch64-linux-musl
-          - arm-linux-musleabihf
+    runs-on: windows-latest
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install system dependencies
+    - name: Download WePE installer
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential git wget tar xz-utils \
-          gawk texinfo gperf bison flex python3 \
-          libssl-dev pkg-config curl
+        curl -L -o wepe.exe https://www.wepe.com.cn/download/WePE64_V2.3.exe
 
-    # Cache ONLY musl-cross-make source, NEVER output/
-    - name: Cache musl-cross-make source
-      uses: actions/cache@v4
-      with:
-        path: musl-cross-make
-        key: ${{ runner.os }}-${{ matrix.target }}-musl-src
-
-    - name: Clone musl-cross-make
+    - name: Extract WePE installer
       run: |
-        if [ ! -d musl-cross-make ]; then
-          git clone --depth 1 https://github.com/richfelker/musl-cross-make.git
-        fi
+        7z x wepe.exe -oextract
 
-    - name: Build musl-cross toolchain (C-only, correct config)
+    - name: Generate ISO
       run: |
-        cd musl-cross-make
+        cd extract
+        # 微PE官方支持命令行生成 ISO
+        .\WePE.exe /ISO
 
-        # Correct config.mak
-        cat > config.mak <<EOF
-        TARGET = ${{ matrix.target }}
-        OUTPUT = $PWD/output
-        GCC_LANGUAGES = c
-        COMMON_CONFIG += --disable-nls
-        EOF
-
-        # Clean previous partial builds
-        make clean || true
-
-        # Build quietly but keep errors
-        make -j$(nproc) V=0
-
-        echo "$PWD/output/bin" >> $GITHUB_PATH
-
-    - name: Test compiler
-      run: |
-        which ${{ matrix.target }}-gcc
-        echo 'int main(){return 0;}' > test.c
-        ${{ matrix.target }}-gcc test.c -static -o test
-        file test
-
-    - name: Download and extract libpcap
-      run: |
-        wget -q https://www.tcpdump.org/release/libpcap-${{ env.LIBPCAP_VERSION }}.tar.gz
-        tar -xzf libpcap-${{ env.LIBPCAP_VERSION }}.tar.gz
-
-    - name: Build libpcap static
-      run: |
-        cd libpcap-${{ env.LIBPCAP_VERSION }}
-        CC="${{ matrix.target }}-gcc" \
-        ./configure \
-          --host=${{ matrix.target }} \
-          --disable-shared \
-          --enable-static \
-          --with-pcap=linux \
-          --without-libnl \
-          --disable-dbus \
-          --disable-bluetooth \
-          --disable-can
-        make -j$(nproc) V=0
-
-    - name: Download and extract tcpdump
-      run: |
-        wget -q https://www.tcpdump.org/release/tcpdump-${{ env.TCPDUMP_VERSION }}.tar.gz
-        tar -xzf tcpdump-${{ env.TCPDUMP_VERSION }}.tar.gz
-
-    - name: Build tcpdump static
-      run: |
-        cd tcpdump-${{ env.TCPDUMP_VERSION }}
-        CC="${{ matrix.target }}-gcc" \
-        ac_cv_linux_vers=5 \
-        ./configure \
-          --host=${{ matrix.target }} \
-          --with-crypto=no \
-          --disable-smb
-        make -j$(nproc) V=0
-
-        ${{ matrix.target }}-strip tcpdump
-        mv tcpdump ../tcpdump-${{ matrix.target }}
-
-    - name: Verify binary
-      run: |
-        file tcpdump-${{ matrix.target }}
-        # Check static
-        ${{ matrix.target }}-ldd tcpdump-${{ matrix.target }} 2>&1 | grep -q "not a dynamic executable" || {
-          echo "Binary is not static!"
-          exit 1
-        }
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: tcpdump-${{ matrix.target }}
-        path: tcpdump-${{ matrix.target }}
-        retention-days: 7
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Create Release
+    - name: Upload ISO to Release
       uses: softprops/action-gh-release@v2
       with:
-        files: artifacts/**/tcpdump-*
-        generate_release_notes: true
+        files: extract\*.iso
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
