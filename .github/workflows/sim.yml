@@ -20,8 +20,10 @@ jobs:
         sudo apt install -y p7zip-full xorriso
 
         # 安装 wimlib（官方 Debian 包）
-        curl -L -o wimlib.deb "http://ftp.us.debian.org/debian/pool/main/w/wimlib/wimtools_1.14.4-1_amd64.deb"
-        sudo dpkg -i wimlib.deb || sudo apt --fix-broken install -y
+        #sudo apt update
+        sudo apt install -y wimtools
+        #curl -L -o wimlib.deb "http://ftp.us.debian.org/debian/pool/main/w/wimlib/wimtools_1.14.4-1_amd64.deb"
+        #sudo dpkg -i wimlib.deb || sudo apt --fix-broken install -y
 
     # ---------------------------------------------------------
     # 2. 下载 Win11 ISO（UUP dump）
