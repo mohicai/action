@@ -13,6 +13,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
@@ -33,16 +34,12 @@ jobs:
           gawk texinfo gperf bison flex python3 \
           libssl-dev pkg-config curl
 
-    - name: Cache toolchain
+    # Cache ONLY musl-cross-make source, NEVER output/
+    - name: Cache musl-cross-make source
       uses: actions/cache@v4
-      id: cache-toolchain
       with:
-        path: |
-          ${{ github.workspace }}/toolchains/${{ matrix.target }}
-          ${{ github.workspace }}/musl-cross-make/output
-        key: ${{ runner.os }}-${{ matrix.target }}-toolchain-${{ hashFiles('musl-cross-make/config.mak') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ matrix.target }}-toolchain-
+        path: musl-cross-make
+        key: ${{ runner.os }}-${{ matrix.target }}-musl-src
 
     - name: Clone musl-cross-make
       run: |
@@ -50,30 +47,25 @@ jobs:
           git clone --depth 1 https://github.com/richfelker/musl-cross-make.git
         fi
 
-    - name: Build musl-cross toolchain
-      if: steps.cache-toolchain.outputs.cache-hit != 'true'
+    - name: Build musl-cross toolchain (C-only, correct config)
       run: |
         cd musl-cross-make
-        
-        # Create config file
-        cat > config.mak <<EOF
-        TARGET = ${{ matrix.target }}
-        OUTPUT = $PWD/output
-        COMMON_CONFIG += --disable-nls
-        GCC_CONFIG += --enable-languages=c
-        EOF
-        
-        # Build (capture output but fail on error)
-        make -j$(nproc) 2>&1 | tee build.log
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-          echo "Build failed"
-          exit 1
-        fi
 
-    - name: Setup cross-compiler path
-      run: |
-        echo "${{ github.workspace }}/musl-cross-make/output/bin" >> $GITHUB_PATH
-        echo "CC=${{ matrix.target }}-gcc" >> $GITHUB_ENV
+        # Correct config.mak
+        cat > config.mak <<EOF
+TARGET = ${{ matrix.target }}
+OUTPUT = $PWD/output
+GCC_LANGUAGES = c
+COMMON_CONFIG += --disable-nls
+EOF
+
+        # Clean previous partial builds
+        make clean || true
+
+        # Build quietly but keep errors
+        make -j$(nproc) V=0
+
+        echo "$PWD/output/bin" >> $GITHUB_PATH
 
     - name: Test compiler
       run: |
@@ -100,11 +92,7 @@ jobs:
           --disable-dbus \
           --disable-bluetooth \
           --disable-can
-        make -j$(nproc) 2>&1 | tee build.log
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-          echo "libpcap build failed"
-          exit 1
-        fi
+        make -j$(nproc) V=0
 
     - name: Download and extract tcpdump
       run: |
@@ -120,20 +108,15 @@ jobs:
           --host=${{ matrix.target }} \
           --with-crypto=no \
           --disable-smb
-        make -j$(nproc) 2>&1 | tee build.log
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-          echo "tcpdump build failed"
-          exit 1
-        fi
-        
-        # Strip and rename binary
+        make -j$(nproc) V=0
+
         ${{ matrix.target }}-strip tcpdump
         mv tcpdump ../tcpdump-${{ matrix.target }}
 
     - name: Verify binary
       run: |
         file tcpdump-${{ matrix.target }}
-        # Test if binary is static
+        # Check static
         ${{ matrix.target }}-ldd tcpdump-${{ matrix.target }} 2>&1 | grep -q "not a dynamic executable" || {
           echo "Binary is not static!"
           exit 1
@@ -150,17 +133,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    
+
     steps:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-        
-    - name: List artifacts
-      run: |
-        find artifacts -type f -exec file {} \;
-        
+
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
