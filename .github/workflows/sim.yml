@@ -113,9 +113,9 @@ jobs:
     # ---------------------------------------------------------
     # 10. 替换 startnet.cmd（自动启动 osk + DG + Chrome）
     # ---------------------------------------------------------
-    - name: Replace startnet.cmd
+    - name: Write startnet.cmd
       run: |
-        sudo cat << 'EOF' > build/mount/Windows/System32/startnet.cmd
+        sudo tee build/mount/Windows/System32/startnet.cmd > /dev/null << 'EOF'
         wpeinit
         start "" X:\Windows\System32\osk.exe
         start "" X:\ProgramFiles\DG\DiskGenius.exe
