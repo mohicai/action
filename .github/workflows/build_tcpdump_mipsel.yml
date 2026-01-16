@@ -3,7 +3,8 @@ name: Build tcpdump static for mipsel
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    tags:
+      - "v*"
 
 jobs:
   build:
@@ -20,7 +21,7 @@ jobs:
 
     - name: Download musl toolchain (mipsel)
       run: |
-        wget https://musl.cc/mipsel-linux-musl-cross.tgz
+        wget https://joeyparrish.github.io/musl-cc-mirror/mipsel-linux-musl-cross.tgz
         tar -xvf mipsel-linux-musl-cross.tgz
         echo "$PWD/mipsel-linux-musl-cross/bin" >> $GITHUB_PATH
 
@@ -48,9 +49,18 @@ jobs:
         LDFLAGS="-static" \
         ./configure --host=mipsel-linux-musl --with-crypto=no
         make
+        strip tcpdump
+        mv tcpdump ../tcpdump-mipsel-static
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: tcpdump-mipsel-static
-        path: tcpdump-4.99.4/tcpdump
+        path: tcpdump-mipsel-static
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: tcpdump-mipsel-static
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
