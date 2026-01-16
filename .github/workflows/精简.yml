@@ -1,4 +1,4 @@
-name: Build-Minimal-Win11PE
+name: 精简Build-Minimal-Win11PE
 
 permissions:
   contents: write
