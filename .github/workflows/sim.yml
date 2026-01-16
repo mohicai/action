@@ -154,6 +154,14 @@ jobs:
           -no-emul-boot \
           build/iso
 
+    - name: Create tag
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git tag -a v1.0 -m "Auto tag"
+        git push origin v1.0
+
+
     # ---------------------------------------------------------
     # 13. 上传 ISO
     # ---------------------------------------------------------
