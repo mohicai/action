@@ -41,11 +41,12 @@ jobs:
           git clone https://github.com/richfelker/musl-cross-make.git
         fi
 
-    - name: Build musl-cross toolchain (warnings & errors only)
+    - name: Build musl-cross toolchain (C-only, warnings & errors only)
       run: |
         cd musl-cross-make
         echo "TARGET = ${{ matrix.target }}" > config.mak
         echo "OUTPUT = $PWD/output" >> config.mak
+        echo "GCC_LANGUAGES = c" >> config.mak
         make -j$(nproc) 2>&1 | grep -E "warning|error|fatal" || true
         echo "$PWD/output/bin" >> $GITHUB_PATH
 
