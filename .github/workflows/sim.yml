@@ -51,7 +51,7 @@ jobs:
     - name: Mount boot.wim
       run: |
         sudo mkdir -p build/mount
-        sudo wimlib-imagex mount build/boot.wim 1 build/mount
+        sudo wimlib-imagex mount build/boot.wim 1 build/mount --rw
 
     # ---------------------------------------------------------
     # 6. 注入 DiskGenius
