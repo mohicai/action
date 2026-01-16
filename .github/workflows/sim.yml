@@ -1,8 +1,11 @@
 name: Build-Minimal-Win11PE
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
-
+  
 jobs:
   build:
     runs-on: ubuntu-24.04
