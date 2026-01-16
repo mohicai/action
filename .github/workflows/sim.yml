@@ -50,7 +50,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Mount boot.wim
       run: |
-        mkdir -p build/mount
+        sudo mkdir -p build/mount
         sudo wimlib-imagex mount build/boot.wim 1 build/mount
 
     # ---------------------------------------------------------
@@ -58,7 +58,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Inject DiskGenius
       run: |
-        mkdir -p build/mount/ProgramFiles/DG
+        sudo mkdir -p build/mount/ProgramFiles/DG
         curl -L -o dg.zip "https://zip1.webgetstore.com/2025/12/05/9dfc992234bc95d792bab4f581662cd2.zip?sg=ee05cd55fb01d67fe0f0587d869b86bd&e=696a3ee7&fileName=DG6111742_x64.zip&fi=265234806"
         7z x dg.zip -obuild/dg
         cp -r build/dg/* build/mount/ProgramFiles/DG/
@@ -68,7 +68,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Inject Chrome
       run: |
-        mkdir -p build/mount/ProgramFiles/Chrome
+        sudo mkdir -p build/mount/ProgramFiles/Chrome
         curl -L -o chrome.zip "https://nightly.link/zzp198/Google-Chrome-Portable/workflows/build/main/Win64_143.0.7499.193_2026-01-12.zip"
         7z x chrome.zip -obuild/chrome
         cp -r build/chrome/* build/mount/ProgramFiles/Chrome/
@@ -78,7 +78,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Inject RNDIS Drivers
       run: |
-        mkdir -p build/mount/Windows/System32/drivers
+        sudo mkdir -p build/mount/Windows/System32/drivers
         cp build/extract/Windows/System32/drivers/rndismp.sys build/mount/Windows/System32/drivers/ || true
         cp build/extract/Windows/System32/drivers/usb8023.sys build/mount/Windows/System32/drivers/ || true
 
@@ -88,7 +88,7 @@ jobs:
     - name: Inject Virtual Keyboard
       run: |
         cp build/extract/Windows/System32/osk.exe build/mount/Windows/System32/ || true
-        mkdir -p build/mount/Windows/System32/zh-CN
+        sudo mkdir -p build/mount/Windows/System32/zh-CN
         cp build/extract/Windows/System32/zh-CN/osk.exe.mui build/mount/Windows/System32/zh-CN/ || true
 
     # ---------------------------------------------------------
@@ -115,7 +115,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Build ISO
       run: |
-        mkdir -p build/iso
+        sudo mkdir -p build/iso
         cp -r build/extract/* build/iso/
         cp build/boot.wim build/iso/sources/
 
