@@ -80,7 +80,7 @@ jobs:
         sudo mkdir -p build/mount/ProgramFiles/DG
         curl -L -o dg.zip "https://zip1.webgetstore.com/2025/12/05/9dfc992234bc95d792bab4f581662cd2.zip?sg=51c91e0d8e5920b57f285dc38439c22d&e=696a5290&fileName=DG6111742_x64.zip&fi=265234806"
         7z x dg.zip -obuild/dg
-        cp -r build/dg/* build/mount/ProgramFiles/DG/
+        sudo cp -r build/dg/* build/mount/ProgramFiles/DG/
 
     # ---------------------------------------------------------
     # 7. 注入 Chrome（Thorium Portable）
@@ -90,7 +90,7 @@ jobs:
         sudo mkdir -p build/mount/ProgramFiles/Chrome
         curl -L -o chrome.zip "https://nightly.link/zzp198/Google-Chrome-Portable/workflows/build/main/Win64_143.0.7499.193_2026-01-12.zip"
         7z x chrome.zip -obuild/chrome
-        cp -r build/chrome/* build/mount/ProgramFiles/Chrome/
+        sudo cp -r build/chrome/* build/mount/ProgramFiles/Chrome/
 
     # ---------------------------------------------------------
     # 8. 注入 RNDIS 驱动（手机 USB 共享网络）
@@ -98,24 +98,24 @@ jobs:
     - name: Inject RNDIS Drivers
       run: |
         sudo mkdir -p build/mount/Windows/System32/drivers
-        cp build/extract/Windows/System32/drivers/rndismp.sys build/mount/Windows/System32/drivers/ || true
-        cp build/extract/Windows/System32/drivers/usb8023.sys build/mount/Windows/System32/drivers/ || true
+        sudo cp build/extract/Windows/System32/drivers/rndismp.sys build/mount/Windows/System32/drivers/ || true
+        sudo cp build/extract/Windows/System32/drivers/usb8023.sys build/mount/Windows/System32/drivers/ || true
 
     # ---------------------------------------------------------
     # 9. 注入虚拟键盘（osk.exe）
     # ---------------------------------------------------------
     - name: Inject Virtual Keyboard
       run: |
-        cp build/extract/Windows/System32/osk.exe build/mount/Windows/System32/ || true
+        sudo cp build/extract/Windows/System32/osk.exe build/mount/Windows/System32/ || true
         sudo mkdir -p build/mount/Windows/System32/zh-CN
-        cp build/extract/Windows/System32/zh-CN/osk.exe.mui build/mount/Windows/System32/zh-CN/ || true
+        sudo cp build/extract/Windows/System32/zh-CN/osk.exe.mui build/mount/Windows/System32/zh-CN/ || true
 
     # ---------------------------------------------------------
     # 10. 替换 startnet.cmd（自动启动 osk + DG + Chrome）
     # ---------------------------------------------------------
     - name: Replace startnet.cmd
       run: |
-        cat << 'EOF' > build/mount/Windows/System32/startnet.cmd
+        sudo cat << 'EOF' > build/mount/Windows/System32/startnet.cmd
         wpeinit
         start "" X:\Windows\System32\osk.exe
         start "" X:\ProgramFiles\DG\DiskGenius.exe
@@ -135,10 +135,10 @@ jobs:
     - name: Build ISO
       run: |
         sudo mkdir -p build/iso
-        cp -r build/extract/* build/iso/
-        cp build/boot.wim build/iso/sources/
+        sudo cp -r build/extract/* build/iso/
+        sudo cp build/boot.wim build/iso/sources/
 
-        xorriso -as mkisofs \
+        sudo xorriso -as mkisofs \
           -iso-level 3 \
           -o Win11PE-Minimal.iso \
           -b boot/etfsboot.com \
