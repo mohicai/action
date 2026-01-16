@@ -1,5 +1,8 @@
 name: Build-Minimal-Win11PE
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:
