@@ -14,12 +14,17 @@ jobs:
     # ---------------------------------------------------------
     # 1. 安装 Linux 构建工具
     # ---------------------------------------------------------
+
     - name: Install required tools
       run: |
         sudo apt update
-        sudo apt install -y wimtools wimlib-imagex p7zip-full xorriso genisoimage
-
-    # ---------------------------------------------------------
+        sudo apt install -y p7zip-full xorriso genisoimage）
+        curl -L -o wimlib.tar.gz "https://wimlib.net/downloads/wimlib-1.14.4-linux-x86_64.tar.gz"
+        tar -xzf wimlib.tar.gz
+        sudo cp wimlib-*/bin/* /usr/local/bin/
+        sudo cp wimlib-*/lib/* /usr/local/lib/
+        sudo ldconfig
+  # ---------------------------------------------------------
     # 2. 创建构建目录
     # ---------------------------------------------------------
     - name: Prepare build directories
