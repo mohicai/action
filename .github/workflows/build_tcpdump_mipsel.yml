@@ -1,4 +1,4 @@
-name: Build-WePE-ISO
+name: Build-Win11PE-Custom
 
 on:
   workflow_dispatch:
@@ -11,23 +11,152 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Download WePE installer
+    - name: Prepare folders
       run: |
-        curl -L -o wepe.exe https://www.wepe.com.cn/download/WePE64_V2.3.exe
+        mkdir tools
+        mkdir drivers
+        mkdir fonts
+        mkdir shell
 
-    - name: Extract WePE installer
+    # ---------------------------------------------------------
+    # 1. 下载 Windows ADK（Win11）
+    # ---------------------------------------------------------
+    - name: Download Windows ADK
+      run: curl -L -o adksetup.exe "https://go.microsoft.com/fwlink/?linkid=2271337"
+
+    - name: Install Windows ADK
+      run: .\adksetup.exe /quiet /norestart /features OptionId.DeploymentTools
+
+    # ---------------------------------------------------------
+    # 2. 下载 WinPE Addon
+    # ---------------------------------------------------------
+    - name: Download WinPE Addon
+      run: curl -L -o winpe.exe "https://go.microsoft.com/fwlink/?linkid=2271338"
+
+    - name: Install WinPE Addon
+      run: .\winpe.exe /quiet /norestart /features OptionId.WindowsPreinstallationEnvironment
+
+    # ---------------------------------------------------------
+    # 3. 下载 Windows 11 ISO（官方直链）
+    # ---------------------------------------------------------
+    - name: Download Windows 11 ISO
+      run: curl -L -o win11.iso "https://software-download.microsoft.com/db/Win11_23H2_Chinese_Simplified_x64.iso"
+
+    - name: Mount Win11 ISO
       run: |
-        7z x wepe.exe -oextract
+        Mount-DiskImage -ImagePath win11.iso
+        $vol = (Get-DiskImage win11.iso | Get-Volume).DriveLetter + ":\"
+        echo $vol > isopath.txt
 
-    - name: Generate ISO
+    # ---------------------------------------------------------
+    # 4. 提取字体 / Explorer / 驱动
+    # ---------------------------------------------------------
+    - name: Extract resources from Win11 ISO
       run: |
-        cd extract
-        # 微PE官方支持命令行生成 ISO
-        .\WePE.exe /ISO
+        $vol = Get-Content isopath.txt
 
+        # 字体
+        copy "$vol\Windows\Fonts\msyh.ttc" fonts\
+        copy "$vol\Windows\Fonts\simhei.ttf" fonts\
+
+        # Explorer Shell
+        copy "$vol\Windows\explorer.exe" shell\
+        copy "$vol\Windows\System32\shell32.dll" shell\
+        copy "$vol\Windows\System32\user32.dll" shell\
+        copy "$vol\Windows\System32\ole32.dll" shell\
+        copy "$vol\Windows\System32\comctl32.dll" shell\
+
+        # NVMe / USB3 驱动
+        robocopy "$vol\Windows\System32\DriverStore\FileRepository" drivers\stornvme stornvme.inf* /E
+        robocopy "$vol\Windows\System32\DriverStore\FileRepository" drivers\iusb3hub iusb3hub.inf* /E
+        robocopy "$vol\Windows\System32\DriverStore\FileRepository" drivers\iusb3xhc iusb3xhc.inf* /E
+
+    # ---------------------------------------------------------
+    # 5. 下载工具（DiskGenius / 7-Zip）
+    # ---------------------------------------------------------
+    - name: Download DiskGenius
+      run: |
+        curl -L -o dg.zip "https://download.diskgenius.com/dg.zip"
+        7z x dg.zip -otools\dg
+
+    - name: Download 7-Zip
+      run: |
+        curl -L -o 7z.zip "https://www.7-zip.org/a/7z2408-extra.7z"
+        7z x 7z.zip -otools\7z
+
+    # ---------------------------------------------------------
+    # 6. 创建 WinPE 工作目录
+    # ---------------------------------------------------------
+    - name: Create WinPE working directory
+      run: copype.cmd amd64 C:\winpe
+
+    # ---------------------------------------------------------
+    # 7. 挂载 boot.wim
+    # ---------------------------------------------------------
+    - name: Mount boot.wim
+      run: |
+        mkdir C:\mount
+        Dism /Mount-Image /ImageFile:C:\winpe\media\sources\boot.wim /Index:1 /MountDir:C:\mount
+
+    # ---------------------------------------------------------
+    # 8. 添加 WinPE 网络组件
+    # ---------------------------------------------------------
+    - name: Add WinPE optional components
+      run: |
+        $oc="C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64\WinPE_OCs"
+        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-WMI.cab"
+        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-Scripting.cab"
+        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-NetFx.cab"
+        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-PowerShell.cab"
+        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-DismCmdlets.cab"
+        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-HTA.cab"
+
+    # ---------------------------------------------------------
+    # 9. 注入驱动
+    # ---------------------------------------------------------
+    - name: Add drivers
+      run: Dism /Image:C:\mount /Add-Driver /Driver:"drivers" /Recurse /ForceUnsigned
+
+    # ---------------------------------------------------------
+    # 10. 加入工具
+    # ---------------------------------------------------------
+    - name: Add tools
+      run: xcopy /E /I tools C:\mount\ProgramFiles\Tools
+
+    # ---------------------------------------------------------
+    # 11. 加入字体
+    # ---------------------------------------------------------
+    - name: Add fonts
+      run: xcopy /E /I fonts C:\mount\Windows\Fonts
+
+    # ---------------------------------------------------------
+    # 12. 配置 Explorer Shell
+    # ---------------------------------------------------------
+    - name: Configure shell
+      run: |
+        echo wpeinit > C:\mount\Windows\System32\startnet.cmd
+        echo start "" X:\Windows\explorer.exe >> C:\mount\Windows\System32\startnet.cmd
+
+        xcopy /E /I shell C:\mount\Windows
+
+    # ---------------------------------------------------------
+    # 13. 卸载并提交映像
+    # ---------------------------------------------------------
+    - name: Unmount and commit
+      run: Dism /Unmount-Image /MountDir:C:\mount /Commit
+
+    # ---------------------------------------------------------
+    # 14. 生成 Win11 PE ISO
+    # ---------------------------------------------------------
+    - name: Create WinPE ISO
+      run: MakeWinPEMedia.cmd /ISO C:\winpe C:\Win11PE-Custom.iso
+
+    # ---------------------------------------------------------
+    # 15. 上传到 Release
+    # ---------------------------------------------------------
     - name: Upload ISO to Release
       uses: softprops/action-gh-release@v2
       with:
-        files: extract\*.iso
+        files: C:\Win11PE-Custom.iso
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
