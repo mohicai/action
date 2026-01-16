@@ -57,7 +57,7 @@ jobs:
         OUTPUT = $PWD/output
         GCC_LANGUAGES = c
         COMMON_CONFIG += --disable-nls
-EOF
+        EOF
 
         # Clean previous partial builds
         make clean || true
