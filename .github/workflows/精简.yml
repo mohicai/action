@@ -1,4 +1,191 @@
-name: Build-Minimal-Win11PE
+name: 精简Build-Minimal-Win11PE
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # ---------------------------------------------------------
+    # 1. 安装工具
+    # ---------------------------------------------------------
+    - name: Install tools
+      run: |
+        sudo apt update
+        sudo apt install -y p7zip-full xorriso fuse3
+        curl -L -o wimtools.deb "https://mirrors.edge.kernel.org/ubuntu/pool/universe/w/wimlib/wimtools_1.14.4-1.1build2_amd64.deb"
+        sudo dpkg -i wimtools.deb || sudo apt --fix-broken install -y
+
+    # ---------------------------------------------------------
+    # 2. 缓存 Win11 ISO
+    # ---------------------------------------------------------
+    - name: Cache Windows ISO
+      uses: actions/cache@v4
+      id: cache_iso
+      with:
+        path: win11.iso
+        key: win11-25h2-zhcn
+        save-always: true
+
+    - name: Download Win11 ISO
+      if: steps.cache_iso.outputs.cache-hit != 'true'
+      run: |
+        curl -L -o win11.iso "https://software.download.prss.microsoft.com/dbazure/Win11_25H2_Chinese_Simplified_x64.iso?t=b00a46ce"
+
+    # ---------------------------------------------------------
+    # 3. 解压 ISO
+    # ---------------------------------------------------------
+    - name: Extract ISO
+      run: |
+        7z x win11.iso -obuild/extract
+        rm win11.iso
+
+    # ---------------------------------------------------------
+    # 4. 提取 boot.wim
+    # ---------------------------------------------------------
+    - name: Extract boot.wim
+      run: cp build/extract/sources/boot.wim build/boot.wim
+
+    # ---------------------------------------------------------
+    # 5. 挂载 boot.wim（必须挂载 image 2）
+    # ---------------------------------------------------------
+    - name: Mount boot.wim
+      run: |
+        sudo mkdir -p build/mount
+        sudo wimlib-imagex mountrw build/boot.wim 2 build/mount
+
+    # ---------------------------------------------------------
+    # 6. 精简 WinPE（核心精简）
+    # ---------------------------------------------------------
+    - name: Slim WinPE
+      run: |
+        sudo rm -rf build/mount/Windows/WinSxS/Backup
+        sudo rm -rf build/mount/Windows/WinSxS/ManifestCache
+        sudo rm -rf build/mount/Windows/System32/Recovery
+        sudo rm -rf build/mount/Windows/System32/WinRE*
+        sudo rm -rf build/mount/Windows/System32/ReAgent*
+        sudo rm -rf build/mount/Windows/System32/WindowsPowerShell
+        sudo rm -rf build/mount/Windows/System32/WinRM
+        sudo rm -rf build/mount/Windows/Microsoft.NET
+        sudo rm -rf build/mount/Windows/Fonts/*
+
+    # ---------------------------------------------------------
+    # 7. 注入 DiskGenius
+    # ---------------------------------------------------------
+    - name: Inject DiskGenius
+      run: |
+        sudo mkdir -p build/mount/ProgramFiles/DG
+        curl -L -o dg.zip "https://github.com/mohicai/action/raw/refs/heads/main/DG6111742_x64-1.zip"
+        7z x dg.zip -obuild/dg
+        sudo cp -r build/dg/* build/mount/ProgramFiles/DG/
+
+    - name: Slim DiskGenius
+      run: |
+        sudo rm -rf build/mount/ProgramFiles/DG/Languages
+        sudo rm -rf build/mount/ProgramFiles/DG/Help
+
+    # ---------------------------------------------------------
+    # 8. 注入 Chrome（Thorium Portable）
+    # ---------------------------------------------------------
+    - name: Inject Chrome
+      run: |
+        sudo mkdir -p build/mount/ProgramFiles/Chrome
+        curl -L -o chrome.zip "https://nightly.link/zzp198/Google-Chrome-Portable/workflows/build/main/Win64_143.0.7499.193_2026-01-12.zip"
+        7z x chrome.zip -obuild/chrome
+        sudo cp -r build/chrome/* build/mount/ProgramFiles/Chrome/
+
+    - name: Slim Chrome
+      run: |
+        sudo rm -rf build/mount/ProgramFiles/Chrome/*crashpad*
+        sudo rm -rf build/mount/ProgramFiles/Chrome/MEIPreload
+        sudo rm -rf build/mount/ProgramFiles/Chrome/SwiftShader
+        sudo rm -rf build/mount/ProgramFiles/Chrome/locales/*.pak
+        sudo rm -rf build/mount/ProgramFiles/Chrome/resources.pak
+
+    # ---------------------------------------------------------
+    # 9. 注入 RNDIS 驱动
+    # ---------------------------------------------------------
+    - name: Inject RNDIS Drivers
+      run: |
+        sudo mkdir -p build/mount/Windows/System32/drivers
+        sudo cp build/extract/Windows/System32/drivers/rndismp.sys build/mount/Windows/System32/drivers/ || true
+        sudo cp build/extract/Windows/System32/drivers/usb8023.sys build/mount/Windows/System32/drivers/ || true
+
+    # ---------------------------------------------------------
+    # 10. 注入 OSK
+    # ---------------------------------------------------------
+    - name: Inject OSK
+      run: |
+        sudo wimlib-imagex extract build/boot.wim 2 Windows/System32/osk.exe --dest-dir=build/extract
+        sudo wimlib-imagex extract build/boot.wim 2 Windows/System32/zh-CN/osk.exe.mui --dest-dir=build/extract
+        sudo cp build/extract/Windows/System32/osk.exe build/mount/Windows/System32/
+        sudo mkdir -p build/mount/Windows/System32/zh-CN
+        sudo cp build/extract/Windows/System32/zh-CN/osk.exe.mui build/mount/Windows/System32/zh-CN/
+
+    # ---------------------------------------------------------
+    # 11. 写入 startnet.cmd
+    # ---------------------------------------------------------
+    - name: Write startnet.cmd
+      run: |
+        sudo tee build/mount/Windows/System32/startnet.cmd > /dev/null << 'EOF'
+wpeinit
+start "" X:\Windows\System32\osk.exe
+start "" X:\ProgramFiles\DG\DiskGenius.exe
+start "" X:\ProgramFiles\Chrome\chrome.exe
+EOF
+
+    # ---------------------------------------------------------
+    # 12. 提交 boot.wim
+    # ---------------------------------------------------------
+    - name: Commit boot.wim
+      run: sudo wimlib-imagex unmount build/mount --commit
+
+    # ---------------------------------------------------------
+    # 13. 构建最小 ISO（不复制整个 ISO）
+    # ---------------------------------------------------------
+    - name: Build ISO
+      run: |
+        sudo mkdir -p build/iso/boot
+        sudo mkdir -p build/iso/efi/microsoft/boot
+        sudo mkdir -p build/iso/sources
+
+        sudo cp build/extract/boot/etfsboot.com build/iso/boot/
+        sudo cp build/extract/efi/microsoft/boot/efisys.bin build/iso/efi/microsoft/boot/
+        sudo cp build/boot.wim build/iso/sources/boot.wim
+
+        sudo xorriso -as mkisofs \
+          -iso-level 3 \
+          -o Win11PE-Minimal.iso \
+          -b boot/etfsboot.com \
+          -no-emul-boot \
+          -boot-load-size 8 \
+          -eltorito-alt-boot \
+          -e efi/microsoft/boot/efisys.bin \
+          -no-emul-boot \
+          build/iso
+
+    # ---------------------------------------------------------
+    # 14. 上传到 Release（tag 触发）
+    # ---------------------------------------------------------
+    - name: Upload ISO
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        files: Win11PE-Minimal.iso
+        overwrite_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}name: Build-Minimal-Win11PE
 
 permissions:
   contents: write
