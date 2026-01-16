@@ -36,7 +36,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Extract ISO
       run: |
-        7z x win11.iso -o build/extract
+        7z x win11.iso -obuild/extract
 
     # ---------------------------------------------------------
     # 4. 提取 boot.wim
