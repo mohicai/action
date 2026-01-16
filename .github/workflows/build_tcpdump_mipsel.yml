@@ -1,11 +1,22 @@
-name: Build tcpdump static for mipsel
+name: Build multi-arch static tcpdump
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - mipsel-linux-musl
+          - aarch64-linux-musl
+          - armv7l-linux-musleabihf
 
     steps:
     - name: Checkout
@@ -14,16 +25,31 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential git wget tar xz-utils
+        sudo apt install -y \
+          build-essential git wget tar xz-utils \
+          gawk texinfo gperf bison flex python3
 
-    - name: Clone musl-cross-make
+    - name: Cache toolchain
+      uses: actions/cache@v4
+      with:
+        path: musl-cross-make/output
+        key: ${{ runner.os }}-${{ matrix.target }}-musl-toolchain
+
+    - name: Build musl-cross toolchain
       run: |
-        git clone https://github.com/richfelker/musl-cross-make.git
+        if [ ! -d musl-cross-make ]; then
+          git clone https://github.com/richfelker/musl-cross-make.git
+        fi
         cd musl-cross-make
-        echo "TARGET = mipsel-linux-musl" > config.mak
+        echo "TARGET = ${{ matrix.target }}" > config.mak
         echo "OUTPUT = $PWD/output" >> config.mak
         make -j$(nproc)
         echo "$PWD/output/bin" >> $GITHUB_PATH
+
+    - name: Test compiler
+      run: |
+        echo 'int main(){return 0;}' > test.c
+        ${{ matrix.target }}-gcc test.c -static -o test
 
     - name: Download libpcap
       run: |
@@ -33,8 +59,8 @@ jobs:
     - name: Build libpcap static
       run: |
         cd libpcap-1.10.4
-        CC=mipsel-linux-musl-gcc \
-        ./configure --host=mipsel-linux-musl --enable-static --disable-shared
+        CC=${{ matrix.target }}-gcc \
+        ./configure --host=${{ matrix.target }} --disable-shared
         make
 
     - name: Download tcpdump
@@ -45,15 +71,31 @@ jobs:
     - name: Build tcpdump static
       run: |
         cd tcpdump-4.99.4
-        CC=mipsel-linux-musl-gcc \
+        CC=${{ matrix.target }}-gcc \
         LDFLAGS="-static" \
-        ./configure --host=mipsel-linux-musl --with-crypto=no
+        ./configure --host=${{ matrix.target }} --with-crypto=no
         make
         strip tcpdump
-        mv tcpdump ../tcpdump-mipsel-static
+        mv tcpdump ../tcpdump-${{ matrix.target }}-static
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: tcpdump-mipsel-static
-        path: tcpdump-mipsel-static
+        name: tcpdump-${{ matrix.target }}-static
+        path: tcpdump-${{ matrix.target }}-static
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          tcpdump-*/tcpdump-*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
