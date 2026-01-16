@@ -70,7 +70,7 @@ jobs:
       run: |
         mkdir -p build/mount/ProgramFiles/Chrome
         curl -L -o chrome.zip "https://nightly.link/zzp198/Google-Chrome-Portable/workflows/build/main/Win64_143.0.7499.193_2026-01-12.zip"
-        7z x chrome.zip -o build/chrome
+        7z x chrome.zip -obuild/chrome
         cp -r build/chrome/* build/mount/ProgramFiles/Chrome/
 
     # ---------------------------------------------------------
