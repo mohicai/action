@@ -1,162 +1,268 @@
-name: Build-Win11PE-Custom
+name: Build-Win11PE-Factory
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Prepare folders
+    # ---------------------------------------------------------
+    # 1. 安装 Linux 构建工具
+    # ---------------------------------------------------------
+    - name: Install required tools
       run: |
-        mkdir tools
-        mkdir drivers
-        mkdir fonts
-        mkdir shell
+        sudo apt update
+        sudo apt install -y wimtools wimlib-imagex p7zip-full xorriso genisoimage
 
     # ---------------------------------------------------------
-    # 1. 下载 Windows ADK（Win11）
+    # 2. 创建构建目录
     # ---------------------------------------------------------
-    - name: Download Windows ADK
-      run: curl -L -o adksetup.exe "https://go.microsoft.com/fwlink/?linkid=2271337"
-
-    - name: Install Windows ADK
-      run: .\adksetup.exe /quiet /norestart /features OptionId.DeploymentTools
-
-    # ---------------------------------------------------------
-    # 2. 下载 WinPE Addon
-    # ---------------------------------------------------------
-    - name: Download WinPE Addon
-      run: curl -L -o winpe.exe "https://go.microsoft.com/fwlink/?linkid=2271338"
-
-    - name: Install WinPE Addon
-      run: .\winpe.exe /quiet /norestart /features OptionId.WindowsPreinstallationEnvironment
+    - name: Prepare build directories
+      run: |
+        mkdir -p build/iso
+        mkdir -p build/mount
+        mkdir -p build/extract
+        mkdir -p build/tools
+        mkdir -p build/drivers
+        mkdir -p build/fonts
+        mkdir -p build/winxshell
+        mkdir -p build/browser
+        mkdir -p build/sdi
 
     # ---------------------------------------------------------
-    # 3. 下载 Windows 11 ISO（官方直链）
+    # 3. 下载 Win11 ISO（官方静态直链）
     # ---------------------------------------------------------
     - name: Download Windows 11 ISO
-      run: curl -L -o win11.iso "https://software-download.microsoft.com/db/Win11_23H2_Chinese_Simplified_x64.iso"
-
-    - name: Mount Win11 ISO
       run: |
-        Mount-DiskImage -ImagePath win11.iso
-        $vol = (Get-DiskImage win11.iso | Get-Volume).DriveLetter + ":\"
-        echo $vol > isopath.txt
+        curl -L -o win11.iso "https://download.microsoft.com/download/8/1/3/8130c6c4-7f2a-4e3b-8f4a-0e3a5f3f0f0e/Win11_23H2_Chinese_Simplified_x64.iso"
 
     # ---------------------------------------------------------
-    # 4. 提取字体 / Explorer / 驱动
+    # 4. 解压 ISO
     # ---------------------------------------------------------
-    - name: Extract resources from Win11 ISO
+    - name: Extract ISO
       run: |
-        $vol = Get-Content isopath.txt
-
-        # 字体
-        copy "$vol\Windows\Fonts\msyh.ttc" fonts\
-        copy "$vol\Windows\Fonts\simhei.ttf" fonts\
-
-        # Explorer Shell
-        copy "$vol\Windows\explorer.exe" shell\
-        copy "$vol\Windows\System32\shell32.dll" shell\
-        copy "$vol\Windows\System32\user32.dll" shell\
-        copy "$vol\Windows\System32\ole32.dll" shell\
-        copy "$vol\Windows\System32\comctl32.dll" shell\
-
-        # NVMe / USB3 驱动
-        robocopy "$vol\Windows\System32\DriverStore\FileRepository" drivers\stornvme stornvme.inf* /E
-        robocopy "$vol\Windows\System32\DriverStore\FileRepository" drivers\iusb3hub iusb3hub.inf* /E
-        robocopy "$vol\Windows\System32\DriverStore\FileRepository" drivers\iusb3xhc iusb3xhc.inf* /E
+        7z x win11.iso -obuild/extract
 
     # ---------------------------------------------------------
-    # 5. 下载工具（DiskGenius / 7-Zip）
+    # 5. 提取 boot.wim
     # ---------------------------------------------------------
-    - name: Download DiskGenius
+    - name: Extract boot.wim
       run: |
-        curl -L -o dg.zip "https://download.diskgenius.com/dg.zip"
-        7z x dg.zip -otools\dg
+        cp build/extract/sources/boot.wim build/boot.wim
 
-    - name: Download 7-Zip
+    # ---------------------------------------------------------
+    # 6. 下载 WinXShell（任务栏 + 开始菜单）
+    # ---------------------------------------------------------
+    - name: Download WinXShell
       run: |
-        curl -L -o 7z.zip "https://www.7-zip.org/a/7z2408-extra.7z"
-        7z x 7z.zip -otools\7z
+        curl -L -o winxshell.zip "https://github.com/pebakery/winxshell/releases/latest/download/WinXShell.zip"
+        7z x winxshell.zip -obuild/winxshell
 
     # ---------------------------------------------------------
-    # 6. 创建 WinPE 工作目录
-    # ---------------------------------------------------------
-    - name: Create WinPE working directory
-      run: copype.cmd amd64 C:\winpe
-
-    # ---------------------------------------------------------
-    # 7. 挂载 boot.wim
+    # 7. 挂载 boot.wim（wimlib）
     # ---------------------------------------------------------
     - name: Mount boot.wim
       run: |
-        mkdir C:\mount
-        Dism /Mount-Image /ImageFile:C:\winpe\media\sources\boot.wim /Index:1 /MountDir:C:\mount
+        sudo wimlib-imagex mount build/boot.wim 1 build/mount
 
     # ---------------------------------------------------------
-    # 8. 添加 WinPE 网络组件
+    # 8. 注入 WinXShell
     # ---------------------------------------------------------
-    - name: Add WinPE optional components
+    - name: Inject WinXShell
       run: |
-        $oc="C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64\WinPE_OCs"
-        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-WMI.cab"
-        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-Scripting.cab"
-        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-NetFx.cab"
-        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-PowerShell.cab"
-        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-DismCmdlets.cab"
-        Dism /Image:C:\mount /Add-Package /PackagePath:"$oc\WinPE-HTA.cab"
+        mkdir -p build/mount/Windows/System32/WinXShell
+        cp -r build/winxshell/* build/mount/Windows/System32/WinXShell/
 
     # ---------------------------------------------------------
-    # 9. 注入驱动
+    # 9. 替换 startnet.cmd（启动 WinXShell + 设置分辨率）
     # ---------------------------------------------------------
-    - name: Add drivers
-      run: Dism /Image:C:\mount /Add-Driver /Driver:"drivers" /Recurse /ForceUnsigned
-
-    # ---------------------------------------------------------
-    # 10. 加入工具
-    # ---------------------------------------------------------
-    - name: Add tools
-      run: xcopy /E /I tools C:\mount\ProgramFiles\Tools
-
-    # ---------------------------------------------------------
-    # 11. 加入字体
-    # ---------------------------------------------------------
-    - name: Add fonts
-      run: xcopy /E /I fonts C:\mount\Windows\Fonts
-
-    # ---------------------------------------------------------
-    # 12. 配置 Explorer Shell
-    # ---------------------------------------------------------
-    - name: Configure shell
+    - name: Replace startnet.cmd
       run: |
-        echo wpeinit > C:\mount\Windows\System32\startnet.cmd
-        echo start "" X:\Windows\explorer.exe >> C:\mount\Windows\System32\startnet.cmd
-
-        xcopy /E /I shell C:\mount\Windows
-
-    # ---------------------------------------------------------
-    # 13. 卸载并提交映像
-    # ---------------------------------------------------------
-    - name: Unmount and commit
-      run: Dism /Unmount-Image /MountDir:C:\mount /Commit
+        cat << 'EOF' > build/mount/Windows/System32/startnet.cmd
+        wpeinit
+        wmic path Win32_VideoController call SetDisplayConfig 1024,768,32
+        start "" X:\Windows\System32\WinXShell\WinXShell.exe
+        EOF
 
     # ---------------------------------------------------------
-    # 14. 生成 Win11 PE ISO
+    # 10. 生成 WinXShell 菜单（工具箱）
     # ---------------------------------------------------------
-    - name: Create WinPE ISO
-      run: MakeWinPEMedia.cmd /ISO C:\winpe C:\Win11PE-Custom.iso
+    - name: Generate WinXShell Menu
+      run: |
+        cat << 'EOF' > build/mount/Windows/System32/WinXShell/Menu.xml
+        <Menu>
+          <Item Name="DiskGenius" Path="X:\ProgramFiles\Tools\dg\DiskGenius.exe" />
+          <Item Name="7-Zip" Path="X:\ProgramFiles\Tools\7z\7zFM.exe" />
+          <Item Name="CMD" Path="X:\Windows\System32\cmd.exe" />
+          <Item Name="PowerShell" Path="X:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" />
+          <Item Name="Chromium" Path="X:\ProgramFiles\Tools\browser\chrome.exe" />
+        </Menu>
+        EOF
 
     # ---------------------------------------------------------
-    # 15. 上传到 Release
+    # 11. 下载 Chromium 浏览器（Thorium Portable）
     # ---------------------------------------------------------
-    - name: Upload ISO to Release
+    - name: Download Chromium Browser
+      run: |
+        curl -L -o browser.zip "https://github.com/Alex313031/Thorium/releases/latest/download/thorium-portable-win64.zip"
+        7z x browser.zip -obuild/browser
+
+    # ---------------------------------------------------------
+    # 12. 下载 SDI 驱动包（自动更新驱动）
+    # ---------------------------------------------------------
+    - name: Download SDI Driver Pack
+      run: |
+        curl -L -o sdi.zip "https://sdi-tool.org/releases/sdi-lite.zip"
+        7z x sdi.zip -obuild/sdi
+
+    # ---------------------------------------------------------
+    # 13. 从 Win11 ISO 提取 NVMe / USB3 驱动
+    # ---------------------------------------------------------
+    - name: Extract NVMe and USB3 drivers
+      run: |
+        mkdir -p build/drivers/nvme
+        mkdir -p build/drivers/usb3
+        cp -r build/extract/Windows/System32/DriverStore/FileRepository/stornvme.inf* build/drivers/nvme/ || true
+        cp -r build/extract/Windows/System32/DriverStore/FileRepository/iusb3hub.inf* build/drivers/usb3/ || true
+        cp -r build/extract/Windows/System32/DriverStore/FileRepository/iusb3xhc.inf* build/drivers/usb3/ || true
+
+    # ---------------------------------------------------------
+    # 14. 注入中文字体
+    # ---------------------------------------------------------
+    - name: Inject Chinese Fonts
+      run: |
+        cp build/extract/Windows/Fonts/msyh.ttc build/mount/Windows/Fonts/ || true
+        cp build/extract/Windows/Fonts/simhei.ttf build/mount/Windows/Fonts/ || true
+
+    # ---------------------------------------------------------
+    # 15. 注入浏览器
+    # ---------------------------------------------------------
+    - name: Inject Chromium Browser
+      run: |
+        mkdir -p build/mount/ProgramFiles/Tools/browser
+        cp -r build/browser/* build/mount/ProgramFiles/Tools/browser/
+
+    # ---------------------------------------------------------
+    # 16. 注入 DiskGenius / 7-Zip
+    # ---------------------------------------------------------
+    - name: Inject Tools
+      run: |
+        mkdir -p build/mount/ProgramFiles/Tools/dg
+        mkdir -p build/mount/ProgramFiles/Tools/7z
+
+        curl -L -o dg.zip "https://download.diskgenius.com/dg.zip"
+        7z x dg.zip -obuild/dg
+        cp -r build/dg/* build/mount/ProgramFiles/Tools/dg/
+
+        curl -L -o 7z.zip "https://www.7-zip.org/a/7z2408-extra.7z"
+        7z x 7z.zip -obuild/7z
+        cp -r build/7z/* build/mount/ProgramFiles/Tools/7z/
+
+    # ---------------------------------------------------------
+    # 17. 注入 SDI 驱动
+    # ---------------------------------------------------------
+    - name: Inject SDI Drivers
+      run: |
+        mkdir -p build/mount/ProgramFiles/Tools/sdi
+        cp -r build/sdi/* build/mount/ProgramFiles/Tools/sdi/
+
+    # ---------------------------------------------------------
+    # 18. 注入 Win11 网络组件
+    # ---------------------------------------------------------
+    - name: Inject Network Components
+      run: |
+        cp -r build/extract/Windows/System32/winhttp.dll build/mount/Windows/System32/ || true
+        cp -r build/extract/Windows/System32/webio.dll build/mount/Windows/System32/ || true
+        cp -r build/extract/Windows/System32/wininet.dll build/mount/Windows/System32/ || true
+        cp -r build/extract/Windows/System32/urlmon.dll build/mount/Windows/System32/ || true
+        cp -r build/extract/Windows/System32/mswsock.dll build/mount/Windows/System32/ || true
+
+    # ---------------------------------------------------------
+    # 19. 提交 boot.wim 修改
+    # ---------------------------------------------------------
+    - name: Commit boot.wim changes
+      run: |
+        sudo wimlib-imagex unmount build/mount --commit
+
+    # ---------------------------------------------------------
+    # 20. 创建 Lite / Full 目录
+    # ---------------------------------------------------------
+    - name: Prepare Lite and Full directories
+      run: |
+        mkdir -p build/lite/sources
+        mkdir -p build/full/sources
+        cp build/boot.wim build/lite/sources/boot.wim
+        cp build/boot.wim build/full/sources/boot.wim
+
+    # ---------------------------------------------------------
+    # 21. Lite 版（删除浏览器和 SDI）
+    # ---------------------------------------------------------
+    - name: Build Lite boot.wim
+      run: |
+        sudo wimlib-imagex mount build/lite/sources/boot.wim 1 build/mount
+        rm -rf build/mount/ProgramFiles/Tools/browser || true
+        rm -rf build/mount/ProgramFiles/Tools/sdi || true
+        sudo wimlib-imagex unmount build/mount --commit
+
+    # ---------------------------------------------------------
+    # 22. Full 版（保留全部内容）
+    # ---------------------------------------------------------
+    - name: Build Full boot.wim
+      run: |
+        sudo wimlib-imagex mount build/full/sources/boot.wim 1 build/mount
+        sudo wimlib-imagex unmount build/mount --commit
+
+    # ---------------------------------------------------------
+    # 23. 构建 Lite ISO（BIOS + UEFI 双启动）
+    # ---------------------------------------------------------
+    - name: Build Lite ISO
+      run: |
+        mkdir -p build/lite/iso
+        cp -r build/extract/* build/lite/iso/
+        cp build/lite/sources/boot.wim build/lite/iso/sources/
+        xorriso -as mkisofs \
+          -iso-level 3 \
+          -o Win11PE-Lite.iso \
+          -b boot/etfsboot.com \
+          -no-emul-boot \
+          -boot-load-size 8 \
+          -eltorito-alt-boot \
+          -e efi/microsoft/boot/efisys.bin \
+          -no-emul-boot \
+          build/lite/iso
+
+    # ---------------------------------------------------------
+    # 24. 构建 Full ISO（BIOS + UEFI 双启动）
+    # ---------------------------------------------------------
+    - name: Build Full ISO
+      run: |
+        mkdir -p build/full/iso
+        cp -r build/extract/* build/full/iso/
+        cp build/full/sources/boot.wim build/full/iso/sources/
+        xorriso -as mkisofs \
+          -iso-level 3 \
+          -o Win11PE-Full.iso \
+          -b boot/etfsboot.com \
+          -no-emul-boot \
+          -boot-load-size 8 \
+          -eltorito-alt-boot \
+          -e efi/microsoft/boot/efisys.bin \
+          -no-emul-boot \
+          build/full/iso
+
+    # ---------------------------------------------------------
+    # 25. 上传到 Release
+    # ---------------------------------------------------------
+    - name: Upload ISOs to Release
       uses: softprops/action-gh-release@v2
       with:
-        files: C:\Win11PE-Custom.iso
+        files: |
+          Win11PE-Lite.iso
+          Win11PE-Full.iso
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
