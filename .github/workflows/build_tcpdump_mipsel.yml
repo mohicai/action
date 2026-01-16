@@ -18,12 +18,10 @@ jobs:
     - name: Install required tools
       run: |
         sudo apt update
-        sudo apt install -y p7zip-full xorriso genisoimage
-        curl -L -o wimlib.tar.gz "https://wimlib.net/downloads/wimlib-1.14.4-linux-x86_64.tar.gz"
-        tar -xzf wimlib.tar.gz
-        sudo cp wimlib-*/bin/* /usr/local/bin/
-        sudo cp wimlib-*/lib/* /usr/local/lib/
-        sudo ldconfig
+        sudo apt install -y p7zip-full xorriso
+       # 安装 wimlib（使用 Debian 官方 .deb 包）
+        curl -L -o wimlib.deb "http://ftp.us.debian.org/debian/pool/main/w/wimlib/wimtools_1.14.4-1_amd64.deb"
+        sudo dpkg -i wimlib.deb || sudo apt --fix-broken install -y
   # ---------------------------------------------------------
     # 2. 创建构建目录
     # ---------------------------------------------------------
