@@ -36,7 +36,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Extract ISO
       run: |
-        7z x win11.iso -obuild/extract
+        7z x win11.iso -o build/extract
 
     # ---------------------------------------------------------
     # 4. 提取 boot.wim
@@ -50,6 +50,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Mount boot.wim
       run: |
+        mkdir -p build/mount
         sudo wimlib-imagex mount build/boot.wim 1 build/mount
 
     # ---------------------------------------------------------
