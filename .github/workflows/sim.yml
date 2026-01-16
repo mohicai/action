@@ -18,10 +18,16 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y p7zip-full xorriso
-
+    - name: Install wimlib 1.14.4
+      run: |
+        sudo apt update
+        sudo apt install -y fuse3
+        curl -L -o wimtools.deb "https://mirrors.edge.kernel.org/ubuntu/pool/universe/w/wimlib/wimtools_1.14.4-1.1build2_amd64.deb"
+        sudo dpkg -i wimtools.deb || sudo apt --fix-broken install -y
+        
         # 安装 wimlib（官方 Debian 包）
         #sudo apt update
-        sudo apt install -y wimtools
+        #sudo apt install -y wimtools
         #curl -L -o wimlib.deb "http://ftp.us.debian.org/debian/pool/main/w/wimlib/wimtools_1.14.4-1_amd64.deb"
         #sudo dpkg -i wimlib.deb || sudo apt --fix-broken install -y
 
