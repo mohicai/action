@@ -29,21 +29,24 @@ jobs:
           build-essential git wget tar xz-utils \
           gawk texinfo gperf bison flex python3
 
-    - name: Cache toolchain
+    - name: Cache musl-cross-make source
       uses: actions/cache@v4
       with:
-        path: musl-cross-make/output
-        key: ${{ runner.os }}-${{ matrix.target }}-musl-toolchain
+        path: musl-cross-make
+        key: ${{ runner.os }}-${{ matrix.target }}-musl-src
 
-    - name: Build musl-cross toolchain
+    - name: Clone musl-cross-make
       run: |
         if [ ! -d musl-cross-make ]; then
           git clone https://github.com/richfelker/musl-cross-make.git
         fi
+
+    - name: Build musl-cross toolchain (warnings & errors only)
+      run: |
         cd musl-cross-make
         echo "TARGET = ${{ matrix.target }}" > config.mak
         echo "OUTPUT = $PWD/output" >> config.mak
-        make -j$(nproc)
+        make -j$(nproc) 2>&1 | grep -E "warning|error|fatal" || true
         echo "$PWD/output/bin" >> $GITHUB_PATH
 
     - name: Test compiler
@@ -56,25 +59,25 @@ jobs:
         wget https://www.tcpdump.org/release/libpcap-1.10.4.tar.gz
         tar -xvf libpcap-1.10.4.tar.gz
 
-    - name: Build libpcap static
+    - name: Build libpcap static (warnings & errors only)
       run: |
         cd libpcap-1.10.4
         CC=${{ matrix.target }}-gcc \
         ./configure --host=${{ matrix.target }} --disable-shared
-        make
+        make 2>&1 | grep -E "warning|error|fatal" || true
 
     - name: Download tcpdump
       run: |
         wget https://www.tcpdump.org/release/tcpdump-4.99.4.tar.gz
         tar -xvf tcpdump-4.99.4.tar.gz
 
-    - name: Build tcpdump static
+    - name: Build tcpdump static (warnings & errors only)
       run: |
         cd tcpdump-4.99.4
         CC=${{ matrix.target }}-gcc \
         LDFLAGS="-static" \
         ./configure --host=${{ matrix.target }} --with-crypto=no
-        make
+        make 2>&1 | grep -E "warning|error|fatal" || true
         strip tcpdump
         mv tcpdump ../tcpdump-${{ matrix.target }}-static
 
