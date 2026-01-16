@@ -78,7 +78,7 @@ jobs:
     - name: Inject DiskGenius
       run: |
         sudo mkdir -p build/mount/ProgramFiles/DG
-        curl -L -o dg.zip "https://zip1.webgetstore.com/2025/12/05/9dfc992234bc95d792bab4f581662cd2.zip?sg=ee05cd55fb01d67fe0f0587d869b86bd&e=696a3ee7&fileName=DG6111742_x64.zip&fi=265234806"
+        curl -L -o dg.zip "https://zip1.webgetstore.com/2025/12/05/9dfc992234bc95d792bab4f581662cd2.zip?sg=51c91e0d8e5920b57f285dc38439c22d&e=696a5290&fileName=DG6111742_x64.zip&fi=265234806"
         7z x dg.zip -obuild/dg
         cp -r build/dg/* build/mount/ProgramFiles/DG/
 
