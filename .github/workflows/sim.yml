@@ -1,0 +1,138 @@
+name: Build-Minimal-Win11PE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # ---------------------------------------------------------
+    # 1. 安装工具（7z + xorriso + wimlib）
+    # ---------------------------------------------------------
+    - name: Install tools
+      run: |
+        sudo apt update
+        sudo apt install -y p7zip-full xorriso
+
+        # 安装 wimlib（官方 Debian 包）
+        curl -L -o wimlib.deb "http://ftp.us.debian.org/debian/pool/main/w/wimlib/wimtools_1.14.4-1_amd64.deb"
+        sudo dpkg -i wimlib.deb || sudo apt --fix-broken install -y
+
+    # ---------------------------------------------------------
+    # 2. 下载 Win11 ISO（UUP dump）
+    # ---------------------------------------------------------
+    - name: Download Win11 ISO (TUNA mirror)
+      run: |
+        curl -L -o win11.iso "https://software.download.prss.microsoft.com/dbazure/Win11_25H2_Chinese_Simplified_x64.iso?t=b00a46ce-4d64-4eab-93f2-75ba4e5524af&P1=1768647552&P2=601&P3=2&P4=RYsHcmLyFK9slomxEf66FoOUlMJ7l39ojzS3P1DWBYeel8TzoaPyJ2D5B2mUO0i2U76iuPX6Dv5YD2U1D%2fQmiR06ajSFEZKuuKL%2fKnFNbT7HBY3pYVe8WZWhBaSg5%2fvi%2fM9RffAhTgr9lG6mmatXq7rbsuCIZ%2bKnd3Pp40AP%2bbE72%2bZddU43tBODu4bWHMG8ufcPVW%2bSs%2bRY84TKQ8Z0nv0dBUHE57vitLfT0kIZ6VfyMsd%2bKSPchwoXK5J%2bd18G21AYk1lmUoyLcBA5IL9Q%2f%2b0S2Vk%2blF1f%2bqklt%2fyf3gVRQxpmfwFxVIsLQaA3KLBJUIeiqP49TzF3pg1Gnjs1Aw%3d%3d"
+    # ---------------------------------------------------------
+    # 3. 解压 ISO
+    # ---------------------------------------------------------
+    - name: Extract ISO
+      run: |
+        7z x win11.iso -obuild/extract
+
+    # ---------------------------------------------------------
+    # 4. 提取 boot.wim
+    # ---------------------------------------------------------
+    - name: Extract boot.wim
+      run: |
+        cp build/extract/sources/boot.wim build/boot.wim
+
+    # ---------------------------------------------------------
+    # 5. 挂载 boot.wim
+    # ---------------------------------------------------------
+    - name: Mount boot.wim
+      run: |
+        sudo wimlib-imagex mount build/boot.wim 1 build/mount
+
+    # ---------------------------------------------------------
+    # 6. 注入 DiskGenius
+    # ---------------------------------------------------------
+    - name: Inject DiskGenius
+      run: |
+        mkdir -p build/mount/ProgramFiles/DG
+        curl -L -o dg.zip "https://zip1.webgetstore.com/2025/12/05/9dfc992234bc95d792bab4f581662cd2.zip?sg=ee05cd55fb01d67fe0f0587d869b86bd&e=696a3ee7&fileName=DG6111742_x64.zip&fi=265234806"
+        7z x dg.zip -obuild/dg
+        cp -r build/dg/* build/mount/ProgramFiles/DG/
+
+    # ---------------------------------------------------------
+    # 7. 注入 Chrome（Thorium Portable）
+    # ---------------------------------------------------------
+    - name: Inject Chrome
+      run: |
+        mkdir -p build/mount/ProgramFiles/Chrome
+        curl -L -o chrome.zip "https://nightly.link/zzp198/Google-Chrome-Portable/workflows/build/main/Win64_143.0.7499.193_2026-01-12.zip"
+        7z x chrome.zip -o build/chrome
+        cp -r build/chrome/* build/mount/ProgramFiles/Chrome/
+
+    # ---------------------------------------------------------
+    # 8. 注入 RNDIS 驱动（手机 USB 共享网络）
+    # ---------------------------------------------------------
+    - name: Inject RNDIS Drivers
+      run: |
+        mkdir -p build/mount/Windows/System32/drivers
+        cp build/extract/Windows/System32/drivers/rndismp.sys build/mount/Windows/System32/drivers/ || true
+        cp build/extract/Windows/System32/drivers/usb8023.sys build/mount/Windows/System32/drivers/ || true
+
+    # ---------------------------------------------------------
+    # 9. 注入虚拟键盘（osk.exe）
+    # ---------------------------------------------------------
+    - name: Inject Virtual Keyboard
+      run: |
+        cp build/extract/Windows/System32/osk.exe build/mount/Windows/System32/ || true
+        mkdir -p build/mount/Windows/System32/zh-CN
+        cp build/extract/Windows/System32/zh-CN/osk.exe.mui build/mount/Windows/System32/zh-CN/ || true
+
+    # ---------------------------------------------------------
+    # 10. 替换 startnet.cmd（自动启动 osk + DG + Chrome）
+    # ---------------------------------------------------------
+    - name: Replace startnet.cmd
+      run: |
+        cat << 'EOF' > build/mount/Windows/System32/startnet.cmd
+        wpeinit
+        start "" X:\Windows\System32\osk.exe
+        start "" X:\ProgramFiles\DG\DiskGenius.exe
+        start "" X:\ProgramFiles\Chrome\chrome.exe
+        EOF
+
+    # ---------------------------------------------------------
+    # 11. 提交 boot.wim 修改
+    # ---------------------------------------------------------
+    - name: Commit boot.wim
+      run: |
+        sudo wimlib-imagex unmount build/mount --commit
+
+    # ---------------------------------------------------------
+    # 12. 构建 ISO（BIOS + UEFI）
+    # ---------------------------------------------------------
+    - name: Build ISO
+      run: |
+        mkdir -p build/iso
+        cp -r build/extract/* build/iso/
+        cp build/boot.wim build/iso/sources/
+
+        xorriso -as mkisofs \
+          -iso-level 3 \
+          -o Win11PE-Minimal.iso \
+          -b boot/etfsboot.com \
+          -no-emul-boot \
+          -boot-load-size 8 \
+          -eltorito-alt-boot \
+          -e efi/microsoft/boot/efisys.bin \
+          -no-emul-boot \
+          build/iso
+
+    # ---------------------------------------------------------
+    # 13. 上传 ISO
+    # ---------------------------------------------------------
+    - name: Upload ISO
+      uses: softprops/action-gh-release@v2
+      with:
+        files: Win11PE-Minimal.iso
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
