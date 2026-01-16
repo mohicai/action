@@ -18,7 +18,7 @@ jobs:
     - name: Install required tools
       run: |
         sudo apt update
-        sudo apt install -y p7zip-full xorriso genisoimage）
+        sudo apt install -y p7zip-full xorriso genisoimage
         curl -L -o wimlib.tar.gz "https://wimlib.net/downloads/wimlib-1.14.4-linux-x86_64.tar.gz"
         tar -xzf wimlib.tar.gz
         sudo cp wimlib-*/bin/* /usr/local/bin/
