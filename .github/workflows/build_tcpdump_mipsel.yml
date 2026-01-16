@@ -2,9 +2,6 @@ name: Build tcpdump static for mipsel
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 jobs:
   build:
@@ -17,13 +14,16 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential wget tar xz-utils
+        sudo apt install -y build-essential git wget tar xz-utils
 
-    - name: Download musl toolchain (mipsel)
+    - name: Clone musl-cross-make
       run: |
-        wget https://joeyparrish.github.io/musl-cc-mirror/mipsel-linux-musl-cross.tgz
-        tar -xvf mipsel-linux-musl-cross.tgz
-        echo "$PWD/mipsel-linux-musl-cross/bin" >> $GITHUB_PATH
+        git clone https://github.com/richfelker/musl-cross-make.git
+        cd musl-cross-make
+        echo "TARGET = mipsel-linux-musl" > config.mak
+        echo "OUTPUT = $PWD/output" >> config.mak
+        make -j$(nproc)
+        echo "$PWD/output/bin" >> $GITHUB_PATH
 
     - name: Download libpcap
       run: |
@@ -57,10 +57,3 @@ jobs:
       with:
         name: tcpdump-mipsel-static
         path: tcpdump-mipsel-static
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: tcpdump-mipsel-static
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
