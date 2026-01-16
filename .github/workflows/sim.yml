@@ -109,7 +109,12 @@ jobs:
         sudo cp build/extract/Windows/System32/osk.exe build/mount/Windows/System32/ || true
         sudo mkdir -p build/mount/Windows/System32/zh-CN
         sudo cp build/extract/Windows/System32/zh-CN/osk.exe.mui build/mount/Windows/System32/zh-CN/ || true
-
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache
     # ---------------------------------------------------------
     # 10. 替换 startnet.cmd（自动启动 osk + DG + Chrome）
     # ---------------------------------------------------------
