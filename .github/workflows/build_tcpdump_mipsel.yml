@@ -39,12 +39,9 @@ jobs:
     # ---------------------------------------------------------
     # 3. 下载 Win11 ISO（官方静态直链）
     # ---------------------------------------------------------
-    - name: Download Windows 11 ISO via UUP dump
+    - name: Download Win11 ISO (TUNA mirror)
       run: |
-        curl -L -o uup.zip "https://github.com/uup-dump/uup-dump/releases/latest/download/uupdump_linux.zip"
-        7z x uup.zip -ouup
-        bash uup/uup_download_linux.sh -l zh-cn -r 23H2 -e professional -o iso
-        mv *.iso win11.iso
+        curl -L -o win11.iso "https://software.download.prss.microsoft.com/dbazure/Win11_25H2_Chinese_Simplified_x64.iso?t=b00a46ce-4d64-4eab-93f2-75ba4e5524af&P1=1768647552&P2=601&P3=2&P4=RYsHcmLyFK9slomxEf66FoOUlMJ7l39ojzS3P1DWBYeel8TzoaPyJ2D5B2mUO0i2U76iuPX6Dv5YD2U1D%2fQmiR06ajSFEZKuuKL%2fKnFNbT7HBY3pYVe8WZWhBaSg5%2fvi%2fM9RffAhTgr9lG6mmatXq7rbsuCIZ%2bKnd3Pp40AP%2bbE72%2bZddU43tBODu4bWHMG8ufcPVW%2bSs%2bRY84TKQ8Z0nv0dBUHE57vitLfT0kIZ6VfyMsd%2bKSPchwoXK5J%2bd18G21AYk1lmUoyLcBA5IL9Q%2f%2b0S2Vk%2blF1f%2bqklt%2fyf3gVRQxpmfwFxVIsLQaA3KLBJUIeiqP49TzF3pg1Gnjs1Aw%3d%3d"
     
     # ---------------------------------------------------------
     # 4. 解压 ISO
