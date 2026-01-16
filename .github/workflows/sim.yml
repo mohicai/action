@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-xl
 
     steps:
     - name: Checkout
@@ -55,7 +55,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Extract ISO
       run: |
-        7z x win11.iso -obuild/extract
+        7z x win11.iso -obuild/extract && rm win11.iso
 
     # ---------------------------------------------------------
     # 4. 提取 boot.wim
