@@ -53,10 +53,10 @@ jobs:
 
         # Correct config.mak
         cat > config.mak <<EOF
-TARGET = ${{ matrix.target }}
-OUTPUT = $PWD/output
-GCC_LANGUAGES = c
-COMMON_CONFIG += --disable-nls
+        TARGET = ${{ matrix.target }}
+        OUTPUT = $PWD/output
+        GCC_LANGUAGES = c
+        COMMON_CONFIG += --disable-nls
 EOF
 
         # Clean previous partial builds
