@@ -1,0 +1,56 @@
+name: Build tcpdump static for mipsel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential wget tar xz-utils
+
+    - name: Download musl toolchain (mipsel)
+      run: |
+        wget https://musl.cc/mipsel-linux-musl-cross.tgz
+        tar -xvf mipsel-linux-musl-cross.tgz
+        echo "$PWD/mipsel-linux-musl-cross/bin" >> $GITHUB_PATH
+
+    - name: Download libpcap
+      run: |
+        wget https://www.tcpdump.org/release/libpcap-1.10.4.tar.gz
+        tar -xvf libpcap-1.10.4.tar.gz
+
+    - name: Build libpcap static
+      run: |
+        cd libpcap-1.10.4
+        CC=mipsel-linux-musl-gcc \
+        ./configure --host=mipsel-linux-musl --enable-static --disable-shared
+        make
+
+    - name: Download tcpdump
+      run: |
+        wget https://www.tcpdump.org/release/tcpdump-4.99.4.tar.gz
+        tar -xvf tcpdump-4.99.4.tar.gz
+
+    - name: Build tcpdump static
+      run: |
+        cd tcpdump-4.99.4
+        CC=mipsel-linux-musl-gcc \
+        LDFLAGS="-static" \
+        ./configure --host=mipsel-linux-musl --with-crypto=no
+        make
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: tcpdump-mipsel-static
+        path: tcpdump-4.99.4/tcpdump
