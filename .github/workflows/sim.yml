@@ -120,7 +120,7 @@ jobs:
         start "" X:\Windows\System32\osk.exe
         start "" X:\ProgramFiles\DG\DiskGenius.exe
         start "" X:\ProgramFiles\Chrome\chrome.exe
-    EOF
+        EOF
 
     # ---------------------------------------------------------
     # 11. 提交 boot.wim 修改
