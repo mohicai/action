@@ -44,6 +44,7 @@ jobs:
       with:
         path: win11.iso
         key: win11-23h2-zhcn
+        save-always: true
     
     - name: Download Win11 ISO (TUNA mirror)
       if: steps.cache_iso.outputs.cache-hit != 'true'
